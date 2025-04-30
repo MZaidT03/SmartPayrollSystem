@@ -24,12 +24,17 @@ const App = () => {
   // Modal states
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
   const [isPayEmployeeModalOpen, setIsPayEmployeeModalOpen] = useState(false);
+  const [isEditEmployeeModalOpen, setIsEditEmployeeModalOpen] = useState(false);
+  const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] =
+    useState(false);
   const [newEmployee, setNewEmployee] = useState({
     employee_id: "",
     name: "",
     wallet_address: "",
     salary: "",
   });
+  const [editEmployee, setEditEmployee] = useState(null);
+  const [employeeToDelete, setEmployeeToDelete] = useState(null);
 
   const CONTRACT_ADDRESS = "0x5629ed7D8BA555C875ADbFda22C7026633BB5140";
   const ABI = [
@@ -146,6 +151,70 @@ const App = () => {
       setIsAddEmployeeModalOpen(false);
     } catch (err) {
       setError("Failed to add employee: " + err.message);
+    }
+    setIsLoading(false);
+  };
+
+  // Owner: Edit employee
+  const openEditEmployeeModal = (employee) => {
+    setEditEmployee({ ...employee });
+    setIsEditEmployeeModalOpen(true);
+  };
+
+  const editEmployeeHandler = async () => {
+    if (
+      !editEmployee.employee_id ||
+      !editEmployee.name ||
+      !editEmployee.wallet_address ||
+      !editEmployee.salary
+    ) {
+      setError("Please fill in all fields.");
+      return;
+    }
+    if (!ethers.isAddress(editEmployee.wallet_address)) {
+      setError(
+        "Invalid wallet address. Please enter a valid Ethereum address."
+      );
+      return;
+    }
+    setIsLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      await axios.put(
+        `http://localhost:3001/employees/${editEmployee.employee_id}`,
+        editEmployee
+      );
+      setSuccess("Employee updated successfully!");
+      fetchEmployees();
+      setIsEditEmployeeModalOpen(false);
+      setEditEmployee(null);
+    } catch (err) {
+      setError("Failed to update employee: " + err.message);
+    }
+    setIsLoading(false);
+  };
+
+  // Owner: Delete employee
+  const openDeleteConfirmModal = (employee) => {
+    setEmployeeToDelete(employee);
+    setIsDeleteConfirmModalOpen(true);
+  };
+
+  const deleteEmployee = async () => {
+    setIsLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      await axios.delete(
+        `http://localhost:3001/employees/${employeeToDelete.employee_id}`
+      );
+      setSuccess("Employee deleted successfully!");
+      fetchEmployees();
+      setIsDeleteConfirmModalOpen(false);
+      setEmployeeToDelete(null);
+    } catch (err) {
+      setError("Failed to delete employee: " + err.message);
     }
     setIsLoading(false);
   };
@@ -338,6 +407,7 @@ const App = () => {
                     <th>Name</th>
                     <th>Wallet Address</th>
                     <th>Salary (ETH)</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -350,6 +420,25 @@ const App = () => {
                         {employee.wallet_address.slice(-4)}
                       </td>
                       <td>{employee.salary}</td>
+                      <td>
+                        <button
+                          onClick={() => openEditEmployeeModal(employee)}
+                          className="action-btn"
+                          style={{
+                            marginRight: "0.5rem",
+                            padding: "0.25rem 0.5rem",
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => openDeleteConfirmModal(employee)}
+                          className="cancel-btn"
+                          style={{ padding: "0.25rem 0.5rem" }}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -510,6 +599,108 @@ const App = () => {
                         className="submit-btn"
                       >
                         {isLoading ? "Adding..." : "Add Employee"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Edit Employee Modal */}
+              {isEditEmployeeModalOpen && editEmployee && (
+                <div className="modal-overlay">
+                  <div className="modal">
+                    <h3 className="modal-title">Edit Employee</h3>
+                    <div className="modal-inputs">
+                      <input
+                        type="text"
+                        placeholder="Employee ID"
+                        value={editEmployee.employee_id}
+                        onChange={(e) =>
+                          setEditEmployee({
+                            ...editEmployee,
+                            employee_id: e.target.value,
+                          })
+                        }
+                        className="input"
+                        disabled
+                      />
+                      <input
+                        type="text"
+                        placeholder="Name"
+                        value={editEmployee.name}
+                        onChange={(e) =>
+                          setEditEmployee({
+                            ...editEmployee,
+                            name: e.target.value,
+                          })
+                        }
+                        className="input"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Wallet Address"
+                        value={editEmployee.wallet_address}
+                        onChange={(e) =>
+                          setEditEmployee({
+                            ...editEmployee,
+                            wallet_address: e.target.value,
+                          })
+                        }
+                        className="input"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Salary (ETH)"
+                        value={editEmployee.salary}
+                        onChange={(e) =>
+                          setEditEmployee({
+                            ...editEmployee,
+                            salary: e.target.value,
+                          })
+                        }
+                        className="input"
+                      />
+                    </div>
+                    <div className="modal-buttons">
+                      <button
+                        onClick={() => setIsEditEmployeeModalOpen(false)}
+                        className="cancel-btn"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={editEmployeeHandler}
+                        disabled={isLoading}
+                        className="submit-btn"
+                      >
+                        {isLoading ? "Saving..." : "Save Changes"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Delete Confirmation Modal */}
+              {isDeleteConfirmModalOpen && employeeToDelete && (
+                <div className="modal-overlay">
+                  <div className="modal">
+                    <h3 className="modal-title">Confirm Deletion</h3>
+                    <p>
+                      Are you sure you want to delete {employeeToDelete.name}?
+                    </p>
+                    <div className="modal-buttons">
+                      <button
+                        onClick={() => setIsDeleteConfirmModalOpen(false)}
+                        className="cancel-btn"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={deleteEmployee}
+                        disabled={isLoading}
+                        className="submit-btn"
+                      >
+                        {isLoading ? "Deleting..." : "Delete"}
                       </button>
                     </div>
                   </div>

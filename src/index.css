@@ -4,12 +4,24 @@
 
 body {
   margin: 0;
-
-  background: linear-gradient(to bottom, #003e7d, #000000);
+  /* Dark gradient background */
+  background: linear-gradient(
+    to bottom,
+    #0f172a,
+    #000000
+  ); /* Dark blue-grey to black */
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   font-family: "Oswald";
+  /* Default text color for dark theme */
+  color: #e5e7eb; /* Light gray */
+  box-sizing: border-box; /* Ensure border-box globally */
+}
+*,
+*:before,
+*:after {
+  box-sizing: inherit; /* Inherit border-box */
 }
 
 .container {
@@ -20,10 +32,12 @@ body {
 
 .header {
   margin-bottom: 1rem;
-  background-color: #023e79;
+  /* Keep dark header, maybe slightly adjusted if needed */
+  background-color: #1e293b; /* Slightly lighter dark blue-grey */
   color: white;
   padding: 1rem;
-  /* box-shadow: 1px 2px 40px rgb(1, 0, 45); */
+  /* Shadow adjusted for dark theme if uncommented */
+  /* box-shadow: 0px 2px 20px rgba(59, 130, 246, 0.2); */
 }
 
 .header-content {
@@ -35,6 +49,7 @@ body {
 .header-title {
   font-size: 2rem;
   font-weight: bold;
+  color: #f8fafc; /* Ensure bright white */
 }
 
 .header-wallet {
@@ -42,8 +57,10 @@ body {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.875rem;
+  color: #cbd5e1; /* Slightly muted white */
 }
 
+/* --- Button Base Styles --- */
 .connect-btn,
 .switch-btn,
 .refresh-btn,
@@ -55,78 +72,133 @@ body {
 .pay-btn {
   padding: 0.5rem 1rem;
   border: none;
-  border-radius: 1rem;
+  border-radius: 0.375rem; /* Slightly less round to match inputs */
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s;
+  /* Ensure text is generally light unless overridden */
+  color: white;
+  display: inline-block; /* Default display */
+  text-align: center;
 }
 
 .connect-btn {
-  background-color: #000957;
+  background-color: #3b82f6; /* Brighter blue */
   color: white;
 }
 
 .connect-btn:hover {
-  background-color: white;
-  color: black;
+  background-color: #60a5fa; /* Lighter blue */
+  color: white; /* Keep text white */
 }
 
 .switch-btn {
-  background-color: #3b82f6;
+  background-color: #ef4444; /* Red for contrast/warning */
   color: white;
 }
 
 .switch-btn:hover {
-  background-color: #1d4ed8;
+  background-color: #f87171; /* Lighter red */
 }
 
+/* Shared styles for primary action buttons */
+.refresh-btn,
+.action-btn,
+.fund-btn,
+.pay-btn {
+  background-color: #3b82f6; /* Consistent primary blue */
+  color: white;
+}
+
+.refresh-btn:hover,
+.action-btn:hover,
+.fund-btn:hover,
+.pay-btn:hover {
+  background-color: #60a5fa; /* Lighter blue */
+}
+
+/* Check button has specific color */
+.check-btn {
+  background-color: #6b7280; /* Medium gray */
+  color: white;
+}
+
+.check-btn:hover {
+  background-color: #9ca3af; /* Lighter gray */
+}
+
+/* Disabled state for all buttons */
+.connect-btn:disabled,
+.switch-btn:disabled,
+.refresh-btn:disabled,
+.action-btn:disabled,
+.cancel-btn:disabled,
+.submit-btn:disabled,
+.check-btn:disabled,
+.fund-btn:disabled,
+.pay-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #4b5563; /* Darker gray when disabled */
+  color: #9ca3af;
+}
+
+/* --- Notifications --- */
 .notification-error {
-  background-color: #fee2e2;
-  border-left: 4px solid #ef4444;
-  color: #b91c1c;
+  background-color: #450a0a; /* Dark red background */
+  border-left: 4px solid #ef4444; /* Keep bright red border */
+  color: #fecaca; /* Light red text */
   padding: 1rem;
   margin-bottom: 1.5rem;
   border-radius: 0.25rem;
 }
 
 .notification-success {
-  background-color: #d1fae5;
-  border-left: 4px solid #10b981;
-  color: #065f46;
+  background-color: #064e3b; /* Dark green background */
+  border-left: 4px solid #10b981; /* Keep bright green border */
+  color: #a7f3d0; /* Light green text */
   padding: 1rem;
   margin-bottom: 1.5rem;
   border-radius: 0.25rem;
 }
 
+/* --- Content Sections --- */
 .section {
-  background-color: white;
-  padding: 1rem;
+  background-color: #1f2937; /* Dark blue-grey background */
+  padding: 1.5rem; /* Increase padding slightly */
   border-radius: 0.5rem;
-  box-shadow: 1px 1px 20px rgb(255, 255, 255);
+  /* Subtle glow shadow for dark theme */
+  box-shadow: 0px 0px 15px rgba(59, 130, 246, 0.1);
   margin-bottom: 1.5rem;
 }
 
 .section-title {
   font-size: 1.5rem;
   font-weight: 400;
-  color: #003f97;
+  color: #93c5fd; /* Light blue for title */
+  margin-bottom: 1rem; /* Add space below main section titles */
 }
 
 .contract-info {
   font-size: 1.2rem;
   font-weight: 300;
-  color: #2982ff;
+  color: #60a5fa; /* Brighter blue for info */
 }
 
 .contract-info span {
   font-weight: 500;
+  color: #e5e7eb; /* Light gray for emphasis */
 }
 
 .contract-address {
   font-size: 0.875rem;
-  color: #000000;
+  color: #9ca3af; /* Medium gray for less emphasis */
+  word-break: break-all; /* Prevent overflow */
+  margin-top: 0.25rem; /* Space above address */
+  margin-bottom: 1rem; /* Space below address */
 }
 
+/* --- Tables --- */
 .table-header {
   display: flex;
   justify-content: space-between;
@@ -134,187 +206,185 @@ body {
   margin-bottom: 1rem;
 }
 
-.refresh-btn {
-  background-color: #000957;
-  color: white;
-}
-
-.refresh-btn:hover {
-  background-color: #2146ac;
-}
-
-.refresh-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* Refresh button styling is covered by .refresh-btn above */
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  background-color: white;
-  border: 3px solid #e5e7eb;
+  background-color: #1f2937; /* Dark background consistent with section */
+  border: 1px solid #4b5563; /* Darker border */
+  color: #e5e7eb; /* Light text for table content */
+  margin-bottom: 1.5rem; /* Add space below table */
 }
 
 .table th,
 .table td {
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 0.75rem 1rem; /* Slightly more padding */
+  border-bottom: 1px solid #4b5563; /* Darker border */
   text-align: left;
 }
 
 .table th {
-  background-color: #f3f4f6;
-  color: #4b5563;
+  background-color: #374151; /* Medium dark gray for header */
+  color: #f3f4f6; /* Light text for header */
+  font-weight: 600;
 }
 
 .table tr:hover {
-  background-color: #f9fafb;
+  background-color: #374151; /* Hover effect */
 }
 
 .table td.mono {
   font-family: "Courier New", Courier, monospace;
   font-size: 0.875rem;
+  color: #cbd5e1; /* Slightly muted white for mono */
 }
 
 .no-data {
-  color: #4b5563;
+  color: #9ca3af; /* Medium gray for no data message */
+  text-align: center;
+  padding: 1.5rem;
 }
 
+/* --- Action Sections & Inputs --- */
+/* This class represents a logical block like "Admin Actions" or "Set Employee Salary" */
 .action-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem; /* Increased spacing BETWEEN action sections */
+}
+.action-section:last-child {
+  margin-bottom: 0.5rem; /* Less margin for the last one */
 }
 
 .action-title {
   font-size: 1.125rem;
   font-weight: 500;
-  color: #374151;
-  margin-bottom: 0.5rem;
+  color: #cbd5e1; /* Light text for action titles */
+  margin-bottom: 1rem; /* Space below title */
 }
 
 .input-group {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr; /* Default to single column */
   gap: 1rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem; /* Space below the group */
+}
+
+@media (min-width: 640px) {
+  /* Apply two columns on larger screens */
+  .input-group:not(.single) {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .input-group.single {
   grid-template-columns: 1fr;
+  margin-bottom: 1rem; /* Ensure space below single input group too */
 }
 
 .input,
 .select {
   width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.25rem;
+  padding: 0.75rem; /* More padding */
+  border: 1px solid #4b5563; /* Darker border */
+  border-radius: 0.375rem; /* Slightly more rounded */
   font-size: 1rem;
+  background-color: #374151; /* Dark input background */
+  color: #e5e7eb; /* Light text in input */
+}
+/* Ensure single inputs also have spacing below if needed */
+.action-section > .input {
+  margin-bottom: 1rem;
+}
+
+.input::placeholder {
+  color: #9ca3af; /* Placeholder text color */
+}
+.select option {
+  /* Ensure dropdown options are visible in some browsers */
+  background-color: #374151;
+  color: #e5e7eb;
 }
 
 .input:focus,
 .select:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  border-color: #3b82f6; /* Blue focus border */
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); /* Focus ring */
 }
 
-.action-btn {
-  background-color: #000957;
-  color: white;
-  width: 100%;
+/* --- Positioning and Spacing for Buttons within Action Sections --- */
+/* Target buttons that are direct children of action-section */
+/* or follow an input/input-group */
+.action-section > .action-btn,
+.action-section > .fund-btn,
+.action-section > .pay-btn,
+.action-section > .check-btn,
+.input-group + .action-btn, /* Button following input group */
+.input-group + .pay-btn,
+.input-group + .check-btn,
+.input + .fund-btn, /* Button following single input */
+.input + .action-btn,
+.input + .pay-btn {
+  display: block; /* Make button take its own line */
+  width: auto; /* Size to content */
+  min-width: 120px;
+  max-width: 200px; /* Optional: constrain max width */
+  margin-top: 0.5rem; /* Default space above button */
 }
 
-.action-btn:hover {
-  background-color: #2146ac;
+/* Override margin-top for buttons specifically following inputs/groups */
+.input-group + .action-btn,
+.input-group + .pay-btn,
+.input-group + .check-btn,
+.input + .fund-btn,
+.input + .action-btn,
+.input + .pay-btn {
+  margin-top: 1rem; /* More space when following form elements */
 }
 
-.action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.pay-btn {
-  background-color: #000957;
-  color: white;
-}
-
-.pay-btn:hover {
-  background-color: #2146ac;
-}
-
-.pay-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.fund-btn {
-  background-color: #000957;
-  color: white;
-}
-
-.fund-btn:hover {
-  background-color: #2146ac;
-}
-
-.fund-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.check-btn {
-  background-color: #6b7280;
-  color: white;
-}
-
-.check-btn:hover {
-  background-color: #4b5563;
-}
-
-.check-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
+/* --- Status Text --- */
 .status-paid {
   text-align: center;
   margin-top: 0.5rem;
   font-weight: 600;
-  color: #16a34a;
+  color: #4ade80; /* Bright green */
 }
 
 .status-not-paid {
   text-align: center;
   margin-top: 0.5rem;
   font-weight: 600;
-  color: #dc2626;
+  color: #f87171; /* Bright red */
 }
 
+/* --- Modal --- */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0.7); /* Darker overlay */
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 50; /* Ensure it's on top */
 }
 
 .modal {
-  background-color: white;
+  background-color: #1f2937; /* Dark background consistent with section */
   padding: 1.5rem;
   border-radius: 0.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 400px;
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.3); /* Pronounced shadow */
+  width: 90%;
+  max-width: 450px; /* Slightly wider modal */
 }
 
 .modal-title {
   font-size: 1.25rem;
   font-weight: 600;
-  color: #1f2937;
-  margin-bottom: 1rem;
+  color: #f3f4f6; /* Light title text */
+  margin-bottom: 1.5rem; /* More spacing */
 }
 
 .modal-inputs {
@@ -323,39 +393,41 @@ body {
   gap: 1rem;
 }
 
+/* Modal inputs inherit .input styles */
+
 .modal-buttons {
   margin-top: 1.5rem;
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: 0.75rem; /* More gap */
 }
 
 .cancel-btn {
-  background-color: #d1d5db;
-  color: #374151;
+  background-color: #4b5563; /* Dark gray */
+  color: #e5e7eb; /* Light text */
 }
 
 .cancel-btn:hover {
-  background-color: #9ca3af;
+  background-color: #6b7280; /* Medium gray */
 }
 
 .submit-btn {
-  background-color: #6366f1;
+  background-color: #4f46e5; /* Indigo */
   color: white;
 }
 
 .submit-btn:hover {
-  background-color: #4f46e5;
+  background-color: #6366f1; /* Lighter Indigo */
 }
 
-.submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* Disabled state for submit is covered by general button disabled rules */
 
+/* --- Footer --- */
 .footer {
-  background-color: #1f2937;
-  color: white;
-  padding: 1rem;
+  background-color: #111827; /* Very dark blue-grey */
+  color: #9ca3af; /* Muted light gray text */
+  padding: 1.5rem 1rem; /* More padding */
   text-align: center;
+  margin-top: auto; /* Push footer to bottom */
+  font-size: 0.875rem;
 }
