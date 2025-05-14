@@ -1,9 +1,14 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import { ethers } from "ethers";
 import axios from "axios";
+
+import EmployeeDetails from "./EmployeeDetails";
+
 import "./index.css";
 
 const App = () => {
+  const navigate = useNavigate();
   const [contract, setContract] = useState(null);
   const [signer, setSigner] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
@@ -21,8 +26,11 @@ const App = () => {
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [departments, setDepartments] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [matchedEmployee, setMatchedEmployee] = useState(null);
 
-  // Modal states
+  // Modal states for other modals
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
   const [isPayEmployeeModalOpen, setIsPayEmployeeModalOpen] = useState(false);
   const [isEditEmployeeModalOpen, setIsEditEmployeeModalOpen] = useState(false);
@@ -34,11 +42,14 @@ const App = () => {
     wallet_address: "",
     salary: "",
     email: "",
+    payment_interval: "",
+    department_id: "",
+    role_id: "",
   });
   const [editEmployee, setEditEmployee] = useState(null);
   const [employeeToDelete, setEmployeeToDelete] = useState(null);
 
-  const CONTRACT_ADDRESS = "0xa0831742B01287Edae3e6CdC16Db3F86c4CF15ca"; // Updated to new contract address
+  const CONTRACT_ADDRESS = "0xa0831742B01287Edae3e6CdC16Db3F86c4CF15ca";
   const ABI = [
     "function owner() view returns (address)",
     "function salaries(address) view returns (uint256)",
@@ -52,6 +63,21 @@ const App = () => {
     "event PaymentSent(address indexed employee, uint256 amount, uint256 timestamp)",
     "event SalarySet(address indexed employee, uint256 salary)",
   ];
+
+  // Fetch departments and roles
+  const fetchDepartmentsAndRoles = async () => {
+    try {
+      const [departmentsResponse, rolesResponse] = await Promise.all([
+        axios.get("http://localhost:3001/departments"),
+        axios.get("http://localhost:3001/roles"),
+      ]);
+      setDepartments(departmentsResponse.data || []);
+      setRoles(rolesResponse.data || []);
+    } catch (error) {
+      console.error("Error fetching departments or roles:", error);
+      setError("Failed to load departments or roles: " + error.message);
+    }
+  };
 
   // Fetch employees from backend
   const fetchEmployees = async () => {
@@ -83,6 +109,21 @@ const App = () => {
     setFetchLoading(false);
   };
 
+  // Calculate total salary for an employee
+  const calculateTotalSalary = (walletAddress) => {
+    if (!paymentHistory || !Array.isArray(paymentHistory)) return "0.0000";
+    const employeePayments = paymentHistory.filter(
+      (payment) =>
+        payment.wallet_address &&
+        payment.wallet_address.toLowerCase() === walletAddress.toLowerCase()
+    );
+    const total = employeePayments.reduce(
+      (sum, payment) => sum + (parseFloat(payment.amount) || 0),
+      0
+    );
+    return total.toFixed(4);
+  };
+
   // Initialize wallet and contract
   const connectWallet = async () => {
     if (window.ethereum) {
@@ -104,8 +145,71 @@ const App = () => {
 
         const balance = await contract.getContractBalance();
         setContractBalance(ethers.formatEther(balance));
+
+        // Check if the connected address matches any employee's wallet address
+        const matched = employees.find(
+          (emp) => emp.wallet_address.toLowerCase() === address.toLowerCase()
+        );
+        setMatchedEmployee(matched || null);
       } catch (err) {
         setError("Failed to connect wallet: " + err.message);
+      }
+    } else {
+      setError("Please install MetaMask!");
+    }
+  };
+
+  // Disconnect wallet
+  const disconnectWallet = async () => {
+    try {
+      setError("");
+      setSuccess("");
+      setConnectedAddress("");
+      setContract(null);
+      setSigner(null);
+      setIsOwner(false);
+      setContractBalance("0");
+      setMatchedEmployee(null); // Reset matched employee on disconnect
+      setSuccess("Wallet disconnected successfully!");
+    } catch (err) {
+      setError("Failed to disconnect wallet: " + err.message);
+    }
+  };
+
+  // Switch wallet
+  const switchWallet = async () => {
+    if (window.ethereum) {
+      try {
+        setError("");
+        setSuccess("");
+        await window.ethereum.request({
+          method: "wallet_requestPermissions",
+          params: [{ eth_accounts: {} }],
+        });
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const address = await signer.getAddress();
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+        setSigner(signer);
+        setContract(contract);
+        setConnectedAddress(address);
+
+        const owner = await contract.owner();
+        setIsOwner(address.toLowerCase() === owner.toLowerCase());
+
+        const balance = await contract.getContractBalance();
+        setContractBalance(ethers.formatEther(balance));
+
+        // Check if the new address matches any employee's wallet address
+        const matched = employees.find(
+          (emp) => emp.wallet_address.toLowerCase() === address.toLowerCase()
+        );
+        setMatchedEmployee(matched || null);
+
+        setSuccess("Wallet switched successfully!");
+      } catch (err) {
+        setError("Failed to switch wallet: " + err.message);
       }
     } else {
       setError("Please install MetaMask!");
@@ -116,19 +220,55 @@ const App = () => {
   useEffect(() => {
     fetchEmployees();
     fetchPaymentHistory();
+    fetchDepartmentsAndRoles();
   }, []);
 
-  // Refresh contract balance on network changes
+  // Refresh contract balance and handle account/network changes
   useEffect(() => {
     if (window.ethereum) {
-      window.ethereum.on("accountsChanged", () => {
+      const handleAccountsChanged = async (accounts) => {
+        if (accounts.length === 0) {
+          disconnectWallet();
+        } else {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          const address = await signer.getAddress();
+          const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+          setSigner(signer);
+          setContract(contract);
+          setConnectedAddress(address);
+
+          const owner = await contract.owner();
+          setIsOwner(address.toLowerCase() === owner.toLowerCase());
+
+          const balance = await contract.getContractBalance();
+          setContractBalance(ethers.formatEther(balance));
+
+          // Check if the new address matches any employee's wallet address
+          const matched = employees.find(
+            (emp) => emp.wallet_address.toLowerCase() === address.toLowerCase()
+          );
+          setMatchedEmployee(matched || null);
+        }
+      };
+
+      const handleChainChanged = () => {
         connectWallet();
-      });
-      window.ethereum.on("chainChanged", () => {
-        connectWallet();
-      });
+      };
+
+      window.ethereum.on("accountsChanged", handleAccountsChanged);
+      window.ethereum.on("chainChanged", handleChainChanged);
+
+      return () => {
+        window.ethereum.removeListener(
+          "accountsChanged",
+          handleAccountsChanged
+        );
+        window.ethereum.removeListener("chainChanged", handleChainChanged);
+      };
     }
-  }, []);
+  }, [employees]); // Add employees as a dependency to ensure the list is up-to-date
 
   // Handle employee selection from dropdown
   const handleEmployeeSelect = (e) => {
@@ -145,9 +285,11 @@ const App = () => {
       !newEmployee.name ||
       !newEmployee.wallet_address ||
       !newEmployee.salary ||
-      !newEmployee.email
+      !newEmployee.email ||
+      !newEmployee.department_id ||
+      !newEmployee.role_id
     ) {
-      setError("Please fill in all fields.");
+      setError("Please fill in all required fields.");
       return;
     }
     if (!ethers.isAddress(newEmployee.wallet_address)) {
@@ -169,6 +311,9 @@ const App = () => {
         wallet_address: "",
         salary: "",
         email: "",
+        payment_interval: "",
+        department_id: "",
+        role_id: "",
       });
       setIsAddEmployeeModalOpen(false);
     } catch (err) {
@@ -179,7 +324,11 @@ const App = () => {
 
   // Admin: Edit employee
   const openEditEmployeeModal = (employee) => {
-    setEditEmployee({ ...employee });
+    setEditEmployee({
+      ...employee,
+      department_id: employee.department_id || "",
+      role_id: employee.role_id || "",
+    });
     setIsEditEmployeeModalOpen(true);
   };
 
@@ -189,7 +338,9 @@ const App = () => {
       !editEmployee.name ||
       !editEmployee.wallet_address ||
       !editEmployee.salary ||
-      !editEmployee.email
+      !editEmployee.email ||
+      !editEmployee.department_id ||
+      !editEmployee.role_id
     ) {
       setError("Please fill in all fields.");
       return;
@@ -381,553 +532,832 @@ const App = () => {
     setIsLoading(false);
   };
 
+  // Navigate to Employee Detail page
+  const navigateToDetails = (employee) => {
+    console.log("Navigating to Details page for employee:", employee);
+    navigate("/employee-details", { state: { employee } });
+  };
+
+  const resetEmployeePaymentStatus = async () => {
+    if (!contract || !employeeAddress) {
+      setError("Please select an employee.");
+      return;
+    }
+    if (!ethers.isAddress(employeeAddress)) {
+      setError("Invalid employee address.");
+      return;
+    }
+    setIsLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const tx = await contract.resetPaymentStatus(employeeAddress);
+      await tx.wait();
+      setSuccess("Payment status reset successfully!");
+    } catch (err) {
+      setError("Failed to reset payment status: " + err.message);
+    }
+    setIsLoading(false);
+  };
+
   return (
     <div>
-      {/* Header */}
-      <header className="header">
-        <div className="container header-content">
-          <h1 className="header-title">Smart Payroll System</h1>
-          {connectedAddress ? (
-            <div className="header-wallet">
-              <span>
-                Connected: {connectedAddress.slice(0, 6)}...
-                {connectedAddress.slice(-4)}
-              </span>
-              <button
-                onClick={() =>
-                  window.ethereum.request({ method: "eth_requestAccounts" })
-                }
-                className="switch-btn"
-              >
-                Switch Wallet
-              </button>
-            </div>
-          ) : (
-            <button onClick={connectWallet} className="connect-btn">
-              Connect Wallet
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container">
-        {/* Notifications */}
-        {error && (
-          <div className="notification-error">
-            <p>{error}</p>
-          </div>
-        )}
-        {success && (
-          <div className="notification-success">
-            <p>{success}</p>
-          </div>
-        )}
-
-        {/* Contract Balance */}
-        <div className="section">
-          <h2 className="section-title">Contract Overview</h2>
-          <p className="contract-info">
-            Contract Balance: <span>{contractBalance} ETH</span>
-          </p>
-          <p className="contract-address">
-            Contract Address: {CONTRACT_ADDRESS.slice(0, 6)}...
-            {CONTRACT_ADDRESS.slice(-4)}
-          </p>
-        </div>
-
-        {/* Check Payment Status (Accessible to Anyone) */}
-        <div className="section">
-          <h2 className="section-title">Check Payment Status</h2>
-          <div className="action-section">
-            <h3 className="action-title">
-              Enter Wallet Address to Check Status
-            </h3>
-            <div className="input-group single">
-              <input
-                type="text"
-                placeholder="Wallet Address"
-                value={employeeCheckAddress}
-                onChange={(e) => setEmployeeCheckAddress(e.target.value)}
-                className="input"
-              />
-            </div>
-            <button
-              onClick={checkPaymentStatus}
-              disabled={isLoading}
-              className="check-btn"
-            >
-              {isLoading ? "Checking..." : "Check Payment Status"}
-            </button>
-            {paymentStatus && (
-              <p
-                className={
-                  paymentStatus === "Paid" ? "status-paid" : "status-not-paid"
-                }
-              >
-                Status: {paymentStatus}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Admin Actions (Restricted to Owner) */}
-        {isOwner && (
-          <>
-            {/* Employees Table */}
-            <div className="section">
-              <div className="table-header">
-                <h2 className="section-title">Employees</h2>
-                <button
-                  onClick={fetchEmployees}
-                  disabled={fetchLoading}
-                  className="refresh-btn"
-                >
-                  {fetchLoading ? "Loading..." : "Refresh Employees"}
-                </button>
-              </div>
-              {employees.length > 0 ? (
-                <div style={{ overflowX: "auto" }}>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Wallet Address</th>
-                        <th>Salary (ETH)</th>
-                        <th>Email</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {employees.map((employee) => (
-                        <tr key={employee.employee_id}>
-                          <td>{employee.employee_id}</td>
-                          <td>{employee.name}</td>
-                          <td className="mono">
-                            {employee.wallet_address.slice(0, 6)}...
-                            {employee.wallet_address.slice(-4)}
-                          </td>
-                          <td>{employee.salary}</td>
-                          <td>{employee.email}</td>
-                          <td>
-                            <button
-                              onClick={() => openEditEmployeeModal(employee)}
-                              className="action-btn"
-                              style={{
-                                marginRight: "0.5rem",
-                                padding: "0.25rem 0.5rem",
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => openDeleteConfirmModal(employee)}
-                              className="cancel-btn"
-                              style={{ padding: "0.25rem 0.5rem" }}
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="no-data">No employees found. Try refreshing.</p>
-              )}
-            </div>
-
-            {/* Payment History */}
-            <div className="section">
-              <div className="table-header">
-                <h2 className="section-title">Payment History</h2>
-                <button
-                  onClick={fetchPaymentHistory}
-                  disabled={fetchLoading}
-                  className="refresh-btn"
-                >
-                  {fetchLoading ? "Loading..." : "Refresh History"}
-                </button>
-              </div>
-              {paymentHistory.length > 0 ? (
-                <div style={{ overflowX: "auto" }}>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Employee ID</th>
-                        <th>Name</th>
-                        <th>Wallet Address</th>
-                        <th>Amount (ETH)</th>
-                        <th>Timestamp</th>
-                        <th>Transaction Hash</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paymentHistory.map((payment, index) => (
-                        <tr key={index}>
-                          <td>{payment.employee_id}</td>
-                          <td>{payment.name}</td>
-                          <td className="mono">
-                            {payment.wallet_address.slice(0, 6)}...
-                            {payment.wallet_address.slice(-4)}
-                          </td>
-                          <td>{payment.amount}</td>
-                          <td>{payment.timestamp}</td>
-                          <td className="mono">
-                            {payment.txHash.slice(0, 6)}...
-                            {payment.txHash.slice(-4)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="no-data">
-                  No payment history found. Try refreshing.
-                </p>
-              )}
-            </div>
-
-            {/* Admin Actions */}
-            <div className="section">
-              <h2 className="section-title">Admin Actions</h2>
-              {/* Add Employee Button */}
-              <div className="action-section">
-                <button
-                  onClick={() => setIsAddEmployeeModalOpen(true)}
-                  className="action-btn"
-                >
-                  Add Employee
-                </button>
-              </div>
-
-              {/* Set Salary */}
-              <div className="action-section">
-                <h3 className="action-title">Set Employee Salary</h3>
-                <div className="input-group">
-                  <select
-                    value={selectedEmployee}
-                    onChange={handleEmployeeSelect}
-                    className="select"
-                  >
-                    <option value="">Select Employee</option>
-                    {employees.map((employee) => (
-                      <option
-                        key={employee.employee_id}
-                        value={employee.employee_id}
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <>
+              {/* Header */}
+              <header className="header">
+                <div className="container header-content">
+                  <h1 className="header-title">Smart Payroll System</h1>
+                  {connectedAddress ? (
+                    <div className="header-wallet">
+                      <span>
+                        Connected: {connectedAddress.slice(0, 6)}...
+                        {connectedAddress.slice(-4)}
+                      </span>
+                      <button onClick={switchWallet} className="switch-btn">
+                        Switch Wallet
+                      </button>
+                      <button
+                        onClick={disconnectWallet}
+                        className="cancel-btn"
+                        style={{ marginLeft: "0.5rem" }}
                       >
-                        {employee.name} ({employee.employee_id})
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Salary (ETH)"
-                    value={salary}
-                    onChange={(e) => setSalary(e.target.value)}
-                    className="input"
-                  />
+                        Disconnect Wallet
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={connectWallet} className="connect-btn">
+                      Connect Wallet
+                    </button>
+                  )}
                 </div>
-                <button
-                  onClick={setEmployeeSalary}
-                  disabled={isLoading}
-                  className="action-btn"
-                >
-                  {isLoading ? "Processing..." : "Set Salary"}
-                </button>
-              </div>
+              </header>
 
-              {/* Pay Employee Button */}
-              <div className="action-section">
-                <button
-                  onClick={() => setIsPayEmployeeModalOpen(true)}
-                  className="pay-btn"
-                >
-                  Pay Employee
-                </button>
-              </div>
+              {/* Main Content */}
+              <main className="container">
+                {/* Notifications */}
+                {error && (
+                  <div className="notification-error">
+                    <p>{error}</p>
+                  </div>
+                )}
+                {success && (
+                  <div className="notification-success">
+                    <p>{success}</p>
+                  </div>
+                )}
 
-              {/* Fund Contract */}
-              <div className="action-section">
-                <h3 className="action-title">Fund Contract</h3>
-                <div className="input-group single">
-                  <input
-                    type="text"
-                    placeholder="Fund Amount (ETH)"
-                    value={fundAmount}
-                    onChange={(e) => setFundAmount(e.target.value)}
-                    className="input"
-                  />
+                {/* Contract Balance */}
+                <div className="section">
+                  <h2 className="section-title">Contract Overview</h2>
+                  <p className="contract-info">
+                    Contract Balance: <span>{contractBalance} ETH</span>
+                  </p>
+                  <p className="contract-address">
+                    Contract Address: {CONTRACT_ADDRESS.slice(0, 6)}...
+                    {CONTRACT_ADDRESS.slice(-4)}
+                  </p>
                 </div>
-                <button
-                  onClick={fundContract}
-                  disabled={isLoading}
-                  className="fund-btn"
-                >
-                  {isLoading ? "Processing..." : "Fund Contract"}
-                </button>
-              </div>
 
-              {/* Add Employee Modal */}
-              {isAddEmployeeModalOpen && (
-                <div className="modal-overlay">
-                  <div className="modal">
-                    <h3 className="modal-title">Add New Employee</h3>
-                    <div className="modal-inputs">
-                      <input
-                        type="text"
-                        placeholder="Employee ID (e.g., E005)"
-                        value={newEmployee.employee_id}
-                        onChange={(e) =>
-                          setNewEmployee({
-                            ...newEmployee,
-                            employee_id: e.target.value,
-                          })
-                        }
-                        className="input"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Name"
-                        value={newEmployee.name}
-                        onChange={(e) =>
-                          setNewEmployee({
-                            ...newEmployee,
-                            name: e.target.value,
-                          })
-                        }
-                        className="input"
-                      />
+                {/* Employee Details for Matched Wallet (Non-Admin Only) */}
+                {connectedAddress && !isOwner && matchedEmployee && (
+                  <div className="section">
+                    <h2 className="section-title">
+                      Welcome, {matchedEmployee.name}
+                    </h2>
+                    <h3 className="action-title">Your Details</h3>
+                    <div className="details-grid">
+                      <div className="detail-item">
+                        <span className="detail-label">Employee ID:</span>
+                        <span>{matchedEmployee.employee_id}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Name:</span>
+                        <span>{matchedEmployee.name}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Wallet Address:</span>
+                        <span className="mono">
+                          {matchedEmployee.wallet_address.slice(0, 6)}...
+                          {matchedEmployee.wallet_address.slice(-4)}
+                        </span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Salary (ETH):</span>
+                        <span>{matchedEmployee.salary}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Email:</span>
+                        <span>{matchedEmployee.email}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Department:</span>
+                        <span>{matchedEmployee.department_name || "N/A"}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Role:</span>
+                        <span>{matchedEmployee.role_name || "N/A"}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Base Salary (ETH):</span>
+                        <span>{matchedEmployee.base_salary || "N/A"}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">
+                          Total Salary Paid (ETH):
+                        </span>
+                        <span>
+                          {calculateTotalSalary(matchedEmployee.wallet_address)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Check Payment Status (Accessible to Anyone) */}
+                <div className="section">
+                  <h2 className="section-title">Check Payment Status</h2>
+                  <div className="action-section">
+                    <h3 className="action-title">
+                      Enter Wallet Address to Check Status
+                    </h3>
+                    <div className="input-group single">
                       <input
                         type="text"
                         placeholder="Wallet Address"
-                        value={newEmployee.wallet_address}
+                        value={employeeCheckAddress}
                         onChange={(e) =>
-                          setNewEmployee({
-                            ...newEmployee,
-                            wallet_address: e.target.value,
-                          })
-                        }
-                        className="input"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Salary (ETH)"
-                        value={newEmployee.salary}
-                        onChange={(e) =>
-                          setNewEmployee({
-                            ...newEmployee,
-                            salary: e.target.value,
-                          })
-                        }
-                        className="input"
-                      />
-                      <input
-                        type="email"
-                        placeholder="Email Address"
-                        value={newEmployee.email}
-                        onChange={(e) =>
-                          setNewEmployee({
-                            ...newEmployee,
-                            email: e.target.value,
-                          })
+                          setEmployeeCheckAddress(e.target.value)
                         }
                         className="input"
                       />
                     </div>
-                    <div className="modal-buttons">
-                      <button
-                        onClick={() => setIsAddEmployeeModalOpen(false)}
-                        className="cancel-btn"
+                    <button
+                      onClick={checkPaymentStatus}
+                      disabled={isLoading}
+                      className="check-btn"
+                    >
+                      {isLoading ? "Checking..." : "Check Payment Status"}
+                    </button>
+                    {paymentStatus && (
+                      <p
+                        className={
+                          paymentStatus === "Paid"
+                            ? "status-paid"
+                            : "status-not-paid"
+                        }
                       >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={addEmployee}
-                        disabled={isLoading}
-                        className="submit-btn"
-                      >
-                        {isLoading ? "Adding..." : "Add Employee"}
-                      </button>
-                    </div>
+                        Status: {paymentStatus}
+                      </p>
+                    )}
                   </div>
                 </div>
-              )}
 
-              {/* Edit Employee Modal */}
-              {isEditEmployeeModalOpen && editEmployee && (
-                <div className="modal-overlay">
-                  <div className="modal">
-                    <h3 className="modal-title">Edit Employee</h3>
-                    <div className="modal-inputs">
-                      <input
-                        type="text"
-                        placeholder="Employee ID"
-                        value={editEmployee.employee_id}
-                        onChange={(e) =>
-                          setEditEmployee({
-                            ...editEmployee,
-                            employee_id: e.target.value,
-                          })
-                        }
-                        className="input"
-                        disabled
-                      />
-                      <input
-                        type="text"
-                        placeholder="Name"
-                        value={editEmployee.name}
-                        onChange={(e) =>
-                          setEditEmployee({
-                            ...editEmployee,
-                            name: e.target.value,
-                          })
-                        }
-                        className="input"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Wallet Address"
-                        value={editEmployee.wallet_address}
-                        onChange={(e) =>
-                          setEditEmployee({
-                            ...editEmployee,
-                            wallet_address: e.target.value,
-                          })
-                        }
-                        className="input"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Salary (ETH)"
-                        value={editEmployee.salary}
-                        onChange={(e) =>
-                          setEditEmployee({
-                            ...editEmployee,
-                            salary: e.target.value,
-                          })
-                        }
-                        className="input"
-                      />
-                      <input
-                        type="email"
-                        placeholder="Email Address"
-                        value={editEmployee.email}
-                        onChange={(e) =>
-                          setEditEmployee({
-                            ...editEmployee,
-                            email: e.target.value,
-                          })
-                        }
-                        className="input"
-                      />
-                    </div>
-                    <div className="modal-buttons">
-                      <button
-                        onClick={() => setIsEditEmployeeModalOpen(false)}
-                        className="cancel-btn"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={editEmployeeHandler}
-                        disabled={isLoading}
-                        className="submit-btn"
-                      >
-                        {isLoading ? "Saving..." : "Save Changes"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Delete Confirmation Modal */}
-              {isDeleteConfirmModalOpen && employeeToDelete && (
-                <div className="modal-overlay">
-                  <div className="modal">
-                    <h3 className="modal-title">Confirm Deletion</h3>
-                    <p>
-                      Are you sure you want to delete {employeeToDelete.name}?
-                    </p>
-                    <div className="modal-buttons">
-                      <button
-                        onClick={() => setIsDeleteConfirmModalOpen(false)}
-                        className="cancel-btn"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={deleteEmployee}
-                        disabled={isLoading}
-                        className="submit-btn"
-                      >
-                        {isLoading ? "Deleting..." : "Delete"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Pay Employee Modal */}
-              {isPayEmployeeModalOpen && (
-                <div className="modal-overlay">
-                  <div className="modal">
-                    <h3 className="modal-title">Pay Employee Salary</h3>
-                    <div className="modal-inputs">
-                      <select
-                        value={selectedEmployee}
-                        onChange={handleEmployeeSelect}
-                        className="select"
-                      >
-                        <option value="">Select Employee</option>
-                        {employees.map((employee) => (
-                          <option
-                            key={employee.employee_id}
-                            value={employee.employee_id}
+                {/* Admin Actions (Restricted to Owner) */}
+                {isOwner && (
+                  <>
+                    {/* Employees Table */}
+                    <div className="section">
+                      <div className="table-header">
+                        <h2 className="section-title">Employees</h2>
+                        <button
+                          onClick={fetchEmployees}
+                          disabled={fetchLoading}
+                          className="refresh-btn"
+                        >
+                          {fetchLoading ? "Loading..." : "Refresh Employees"}
+                        </button>
+                      </div>
+                      {employees.length > 0 ? (
+                        <div style={{ overflowX: "auto" }}>
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Wallet Address</th>
+                                <th>Salary (ETH)</th>
+                                <th>Email</th>
+                                <th>Department</th>
+                                <th>Role</th>
+                                <th>Total Salary (ETH)</th>
+                                <th>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {employees.map((employee) => (
+                                <tr key={employee.employee_id}>
+                                  <td>{employee.employee_id}</td>
+                                  <td>{employee.name}</td>
+                                  <td className="mono">
+                                    {employee.wallet_address.slice(0, 6)}...
+                                    {employee.wallet_address.slice(-4)}
+                                  </td>
+                                  <td>{employee.salary}</td>
+                                  <td>{employee.email}</td>
+                                  <td>{employee.department_name || "N/A"}</td>
+                                  <td>{employee.role_name || "N/A"}</td>
+                                  <td>
+                                    {calculateTotalSalary(
+                                      employee.wallet_address
+                                    )}
+                                  </td>
+                                  <td>
+                                    <button
+                                      onClick={() =>
+                                        navigateToDetails(employee)
+                                      }
+                                      className="action-btn"
+                                      style={{
+                                        marginRight: "0.5rem",
+                                        padding: "0.25rem 0.5rem",
+                                      }}
+                                    >
+                                      Details
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        openEditEmployeeModal(employee)
+                                      }
+                                      className="action-btn"
+                                      style={{
+                                        marginRight: "0.5rem",
+                                        padding: "0.25rem 0.5rem",
+                                      }}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        openDeleteConfirmModal(employee)
+                                      }
+                                      className="cancel-btn"
+                                      style={{ padding: "0.25rem 0.5rem" }}
+                                    >
+                                      Delete
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="no-data">
+                          No employees found. Try refreshing.
+                        </p>
+                      )}
+                      <div className="action-section">
+                        <h3 className="action-title">Reset Payment Status</h3>
+                        <div className="input-group">
+                          <select
+                            value={selectedEmployee}
+                            onChange={handleEmployeeSelect}
+                            className="select"
                           >
-                            {employee.name} ({employee.employee_id})
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        placeholder="Wallet Address"
-                        value={employeeAddress}
-                        onChange={(e) => setEmployeeAddress(e.target.value)}
-                        className="input"
-                        disabled
-                      />
+                            <option value="">Select Employee</option>
+                            {employees.map((employee) => (
+                              <option
+                                key={employee.employee_id}
+                                value={employee.employee_id}
+                              >
+                                {employee.name} ({employee.employee_id})
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Wallet Address"
+                            value={employeeAddress}
+                            onChange={(e) => setEmployeeAddress(e.target.value)}
+                            className="input"
+                            disabled
+                          />
+                        </div>
+                        <button
+                          onClick={resetEmployeePaymentStatus}
+                          disabled={isLoading}
+                          className="action-btn"
+                        >
+                          {isLoading ? "Processing..." : "Reset Status"}
+                        </button>
+                      </div>
                     </div>
-                    <div className="modal-buttons">
-                      <button
-                        onClick={() => setIsPayEmployeeModalOpen(false)}
-                        className="cancel-btn"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={payEmployee}
-                        disabled={isLoading}
-                        className="pay-btn"
-                      >
-                        {isLoading ? "Paying..." : "Pay Salary"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </main>
 
-      {/* Footer */}
-      <footer className="footer">
-        <p>© 2025 Smart Payroll System. All rights reserved.</p>
-      </footer>
+                    {/* Payment History */}
+                    <div className="section">
+                      <div className="table-header">
+                        <h2 className="section-title">Payment History</h2>
+                        <button
+                          onClick={fetchPaymentHistory}
+                          disabled={fetchLoading}
+                          className="refresh-btn"
+                        >
+                          {fetchLoading ? "Loading..." : "Refresh History"}
+                        </button>
+                      </div>
+                      {paymentHistory.length > 0 ? (
+                        <div style={{ overflowX: "auto" }}>
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>Employee ID</th>
+                                <th>Name</th>
+                                <th>Wallet Address</th>
+                                <th>Amount (ETH)</th>
+                                <th>Timestamp</th>
+                                <th>Transaction Hash</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paymentHistory.map((payment, index) => (
+                                <tr key={index}>
+                                  <td>{payment.employee_id}</td>
+                                  <td>{payment.name}</td>
+                                  <td className="mono">
+                                    {payment.wallet_address.slice(0, 6)}...
+                                    {payment.wallet_address.slice(-4)}
+                                  </td>
+                                  <td>{payment.amount}</td>
+                                  <td>{payment.timestamp}</td>
+                                  <td className="mono">
+                                    {payment.txHash.slice(0, 6)}...
+                                    {payment.txHash.slice(-4)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="no-data">
+                          No payment history found. Try refreshing.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Admin Actions */}
+                    <div className="section">
+                      <h2 className="section-title">Admin Actions</h2>
+                      {/* Add Employee Button */}
+                      <div className="action-section">
+                        <button
+                          onClick={() => setIsAddEmployeeModalOpen(true)}
+                          className="action-btn"
+                        >
+                          Add Employee
+                        </button>
+                      </div>
+
+                      {/* Set Salary */}
+                      <div className="action-section">
+                        <h3 className="action-title">Set Employee Salary</h3>
+                        <div className="input-group">
+                          <select
+                            value={selectedEmployee}
+                            onChange={handleEmployeeSelect}
+                            className="select"
+                          >
+                            <option value="">Select Employee</option>
+                            {employees.map((employee) => (
+                              <option
+                                key={employee.employee_id}
+                                value={employee.employee_id}
+                              >
+                                {employee.name} ({employee.employee_id})
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Salary (ETH)"
+                            value={salary}
+                            onChange={(e) => setSalary(e.target.value)}
+                            className="input"
+                          />
+                        </div>
+                        <button
+                          onClick={setEmployeeSalary}
+                          disabled={isLoading}
+                          className="action-btn"
+                        >
+                          {isLoading ? "Processing..." : "Set Salary"}
+                        </button>
+                      </div>
+
+                      {/* Pay Employee Button */}
+                      <div className="action-section">
+                        <button
+                          onClick={() => setIsPayEmployeeModalOpen(true)}
+                          className="pay-btn"
+                        >
+                          Pay Employee
+                        </button>
+                      </div>
+
+                      {/* Fund Contract */}
+                      <div className="action-section">
+                        <h3 className="action-title">Fund Contract</h3>
+                        <div className="input-group single">
+                          <input
+                            type="text"
+                            placeholder="Fund Amount (ETH)"
+                            value={fundAmount}
+                            onChange={(e) => setFundAmount(e.target.value)}
+                            className="input"
+                          />
+                        </div>
+                        <button
+                          onClick={fundContract}
+                          disabled={isLoading}
+                          className="fund-btn"
+                        >
+                          {isLoading ? "Processing..." : "Fund Contract"}
+                        </button>
+                      </div>
+
+                      {/* Add Employee Modal */}
+                      {isAddEmployeeModalOpen && (
+                        <div className="modal-overlay">
+                          <div className="modal">
+                            <h3 className="modal-title">Add New Employee</h3>
+                            <div className="modal-inputs">
+                              <input
+                                type="text"
+                                placeholder="Employee ID (e.g., E005)"
+                                value={newEmployee.employee_id}
+                                onChange={(e) =>
+                                  setNewEmployee({
+                                    ...newEmployee,
+                                    employee_id: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Name"
+                                value={newEmployee.name}
+                                onChange={(e) =>
+                                  setNewEmployee({
+                                    ...newEmployee,
+                                    name: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Wallet Address"
+                                value={newEmployee.wallet_address}
+                                onChange={(e) =>
+                                  setNewEmployee({
+                                    ...newEmployee,
+                                    wallet_address: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Salary (ETH)"
+                                value={newEmployee.salary}
+                                onChange={(e) =>
+                                  setNewEmployee({
+                                    ...newEmployee,
+                                    salary: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="email"
+                                placeholder="Email Address"
+                                value={newEmployee.email}
+                                onChange={(e) =>
+                                  setNewEmployee({
+                                    ...newEmployee,
+                                    email: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Payment Interval (days)"
+                                value={newEmployee.payment_interval}
+                                onChange={(e) =>
+                                  setNewEmployee({
+                                    ...newEmployee,
+                                    payment_interval: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <select
+                                value={newEmployee.department_id}
+                                onChange={(e) =>
+                                  setNewEmployee({
+                                    ...newEmployee,
+                                    department_id: e.target.value,
+                                  })
+                                }
+                                className="select"
+                              >
+                                <option value="">Select Department</option>
+                                {departments.map((dept) => (
+                                  <option
+                                    key={dept.department_id}
+                                    value={dept.department_id}
+                                  >
+                                    {dept.department_name}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                value={newEmployee.role_id}
+                                onChange={(e) =>
+                                  setNewEmployee({
+                                    ...newEmployee,
+                                    role_id: e.target.value,
+                                  })
+                                }
+                                className="select"
+                              >
+                                <option value="">Select Role</option>
+                                {roles.map((role) => (
+                                  <option
+                                    key={role.role_id}
+                                    value={role.role_id}
+                                  >
+                                    {role.role_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="modal-buttons">
+                              <button
+                                onClick={() => setIsAddEmployeeModalOpen(false)}
+                                className="cancel-btn"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={addEmployee}
+                                disabled={isLoading}
+                                className="submit-btn"
+                              >
+                                {isLoading ? "Adding..." : "Add Employee"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Edit Employee Modal */}
+                      {isEditEmployeeModalOpen && editEmployee && (
+                        <div className="modal-overlay">
+                          <div className="modal">
+                            <h3 className="modal-title">Edit Employee</h3>
+                            <div className="modal-inputs">
+                              <input
+                                type="text"
+                                placeholder="Employee ID"
+                                value={editEmployee.employee_id}
+                                onChange={(e) =>
+                                  setEditEmployee({
+                                    ...editEmployee,
+                                    employee_id: e.target.value,
+                                  })
+                                }
+                                className="input"
+                                disabled
+                              />
+                              <input
+                                type="text"
+                                placeholder="Name"
+                                value={editEmployee.name}
+                                onChange={(e) =>
+                                  setEditEmployee({
+                                    ...editEmployee,
+                                    name: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Wallet Address"
+                                value={editEmployee.wallet_address}
+                                onChange={(e) =>
+                                  setEditEmployee({
+                                    ...editEmployee,
+                                    wallet_address: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Salary (ETH)"
+                                value={editEmployee.salary}
+                                onChange={(e) =>
+                                  setEditEmployee({
+                                    ...editEmployee,
+                                    salary: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="email"
+                                placeholder="Email Address"
+                                value={editEmployee.email}
+                                onChange={(e) =>
+                                  setEditEmployee({
+                                    ...editEmployee,
+                                    email: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Payment Interval (days)"
+                                value={editEmployee.payment_interval || ""}
+                                onChange={(e) =>
+                                  setEditEmployee({
+                                    ...editEmployee,
+                                    payment_interval: e.target.value,
+                                  })
+                                }
+                                className="input"
+                              />
+                              <select
+                                value={editEmployee.department_id}
+                                onChange={(e) =>
+                                  setEditEmployee({
+                                    ...editEmployee,
+                                    department_id: e.target.value,
+                                  })
+                                }
+                                className="select"
+                              >
+                                <option value="">Select Department</option>
+                                {departments.map((dept) => (
+                                  <option
+                                    key={dept.department_id}
+                                    value={dept.department_id}
+                                  >
+                                    {dept.department_name}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                value={editEmployee.role_id}
+                                onChange={(e) =>
+                                  setEditEmployee({
+                                    ...editEmployee,
+                                    role_id: e.target.value,
+                                  })
+                                }
+                                className="select"
+                              >
+                                <option value="">Select Role</option>
+                                {roles.map((role) => (
+                                  <option
+                                    key={role.role_id}
+                                    value={role.role_id}
+                                  >
+                                    {role.role_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="modal-buttons">
+                              <button
+                                onClick={() =>
+                                  setIsEditEmployeeModalOpen(false)
+                                }
+                                className="cancel-btn"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={editEmployeeHandler}
+                                disabled={isLoading}
+                                className="submit-btn"
+                              >
+                                {isLoading ? "Saving..." : "Save Changes"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Delete Confirmation Modal */}
+                      {isDeleteConfirmModalOpen && employeeToDelete && (
+                        <div className="modal-overlay">
+                          <div className="modal">
+                            <h3 className="modal-title">Confirm Deletion</h3>
+                            <p>
+                              Are you sure you want to delete{" "}
+                              {employeeToDelete.name}?
+                            </p>
+                            <div className="modal-buttons">
+                              <button
+                                onClick={() =>
+                                  setIsDeleteConfirmModalOpen(false)
+                                }
+                                className="cancel-btn"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={deleteEmployee}
+                                disabled={isLoading}
+                                className="submit-btn"
+                              >
+                                {isLoading ? "Deleting..." : "Delete"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pay Employee Modal */}
+                      {isPayEmployeeModalOpen && (
+                        <div className="modal-overlay">
+                          <div className="modal">
+                            <h3 className="modal-title">Pay Employee Salary</h3>
+                            <div className="modal-inputs">
+                              <select
+                                value={selectedEmployee}
+                                onChange={handleEmployeeSelect}
+                                className="select"
+                              >
+                                <option value="">Select Employee</option>
+                                {employees.map((employee) => (
+                                  <option
+                                    key={employee.employee_id}
+                                    value={employee.employee_id}
+                                  >
+                                    {employee.name} ({employee.employee_id})
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                type="text"
+                                placeholder="Wallet Address"
+                                value={employeeAddress}
+                                onChange={(e) =>
+                                  setEmployeeAddress(e.target.value)
+                                }
+                                className="input"
+                                disabled
+                              />
+                            </div>
+                            <div className="modal-buttons">
+                              <button
+                                onClick={() => setIsPayEmployeeModalOpen(false)}
+                                className="cancel-btn"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={payEmployee}
+                                disabled={isLoading}
+                                className="pay-btn"
+                              >
+                                {isLoading ? "Paying..." : "Pay Salary"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </main>
+
+              {/* Footer */}
+              <footer className="footer">
+                <p>© 2025 Smart Payroll System. All rights reserved.</p>
+              </footer>
+            </>
+          }
+        />
+
+        <Route
+          path="/employee-details"
+          element={
+            <EmployeeDetails calculateTotalSalary={calculateTotalSalary} />
+          }
+        />
+      </Routes>
     </div>
   );
 };

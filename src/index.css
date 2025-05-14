@@ -295,7 +295,10 @@ body {
 .action-section > .input {
   margin-bottom: 1rem;
 }
-
+.disabled-btn {
+  background-color: #d3d3d3 !important;
+  cursor: not-allowed !important;
+}
 .input::placeholder {
   color: #9ca3af; /* Placeholder text color */
 }
